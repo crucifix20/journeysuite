@@ -1,7 +1,7 @@
 import { createManagedStaffLogin } from "../auth.js";
 import { initProtectedPage } from "../router.js";
 import { createAuditLog } from "../services/auditService.js";
-import { deleteStaff, listStaff, saveStaff } from "../services/staffService.js";
+import { deleteStaffWithRelatedData, listStaff, saveStaff } from "../services/staffService.js";
 import { escapeHtml, friendlyError, initials, qs, render, serializeForm, withFormBusy } from "../utils.js";
 import { closeModal, confirmDialog, createPageHeader, createStatusBadge, openModal, showToast } from "../ui.js";
 
@@ -270,19 +270,26 @@ await initProtectedPage("staff", async ({ root, auth }) => {
     }));
 
     root.querySelectorAll(".staff-delete-button").forEach((button) => button.addEventListener("click", async () => {
-      if (!await confirmDialog({ title: "Delete staff member", message: "This removes the staff record from the directory.", confirmLabel: "Delete", tone: "danger" })) {
+      const member = staffMembers.find((item) => item.id === Number(button.dataset.id));
+      if (!await confirmDialog({
+        title: "Delete staff member",
+        message: `This removes ${member?.full_name || "this staff member"} plus their assigned housekeeping tasks, payments received, service orders created, and audit log entries. Supabase Auth login records are not removed from the browser app.`,
+        confirmLabel: "Delete All Related Data",
+        tone: "danger",
+      })) {
         return;
       }
       try {
-        await deleteStaff(Number(button.dataset.id));
+        const result = await deleteStaffWithRelatedData(Number(button.dataset.id));
+        const removedTotal = Object.values(result.deleted).reduce((sum, count) => sum + count, 0);
         await createAuditLog({
           userId: auth.user.id,
           action: "Deleted staff member",
           entityType: "staff",
           entityId: Number(button.dataset.id),
-          details: "Staff record removed",
+          details: `Removed ${result.staff.full_name} and ${removedTotal} related rows (${result.deleted.housekeepingTasks} tasks, ${result.deleted.payments} payments, ${result.deleted.serviceOrders} service orders, ${result.deleted.auditLogs} audit logs)`,
         });
-        showToast("Staff member deleted.", "success");
+        showToast(`Staff member deleted with ${removedTotal} related rows.`, "success");
         await load();
       } catch (error) {
         showToast(friendlyError(error), "error");

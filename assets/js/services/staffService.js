@@ -49,6 +49,20 @@ export async function deleteStaff(id) {
   }
 }
 
+async function getStaffDeleteTarget(id) {
+  const { data, error } = await supabase
+    .from("staff")
+    .select("id, full_name, auth_user_id")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
 async function deleteRows(table, column, values) {
   if (!values.length) {
     return 0;
@@ -65,6 +79,61 @@ async function deleteRows(table, column, values) {
   }
 
   return (data || []).length;
+}
+
+async function deleteRowsByValue(table, column, value) {
+  if (!value) {
+    return 0;
+  }
+
+  return deleteRows(table, column, [value]);
+}
+
+export async function deleteStaffWithRelatedData(id) {
+  const staff = await getStaffDeleteTarget(id);
+
+  const deleted = {
+    housekeepingTasks: await deleteRowsByValue("housekeeping_tasks", "assigned_staff_id", staff.id),
+    payments: await deleteRowsByValue("payments", "received_by", staff.auth_user_id),
+    serviceOrders: await deleteRowsByValue("service_orders", "created_by", staff.auth_user_id),
+    auditLogs: await deleteRowsByValue("audit_logs", "user_id", staff.auth_user_id),
+  };
+
+  await deleteStaff(staff.id);
+
+  return {
+    staff,
+    deleted,
+  };
+}
+
+export async function deleteAllStaffWithRelatedData() {
+  const { data: staffMembers, error } = await supabase
+    .from("staff")
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  const summary = {
+    staff: 0,
+    housekeepingTasks: 0,
+    payments: 0,
+    serviceOrders: 0,
+    auditLogs: 0,
+  };
+
+  for (const staffMember of staffMembers || []) {
+    const result = await deleteStaffWithRelatedData(staffMember.id);
+    summary.staff += 1;
+    summary.housekeepingTasks += result.deleted.housekeepingTasks;
+    summary.payments += result.deleted.payments;
+    summary.serviceOrders += result.deleted.serviceOrders;
+    summary.auditLogs += result.deleted.auditLogs;
+  }
+
+  return summary;
 }
 
 export async function deleteAllStaffTransactions() {

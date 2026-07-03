@@ -2,7 +2,7 @@ import { createManagedStaffLogin } from "../auth.js";
 import { initProtectedPage } from "../router.js";
 import { createAuditLog } from "../services/auditService.js";
 import { deleteStaff, listStaff, saveStaff } from "../services/staffService.js";
-import { friendlyError, initials, qs, render, serializeForm, withFormBusy } from "../utils.js";
+import { escapeHtml, friendlyError, initials, qs, render, serializeForm, withFormBusy } from "../utils.js";
 import { closeModal, confirmDialog, createPageHeader, createStatusBadge, openModal, showToast } from "../ui.js";
 
 const STAFF_STATUSES = ["Active", "On Leave", "Inactive"];
@@ -84,6 +84,7 @@ await initProtectedPage("staff", async ({ root, auth }) => {
                   <div><span>Status</span>${createStatusBadge(member.status)}</div>
                   <div><span>Contact</span><strong>${member.email || member.phone || "No contact"}</strong></div>
                   <div><span>Login</span><strong>${member.auth_user_id ? "Enabled" : "Directory only"}</strong></div>
+                  <div><span>Password</span><strong>${member.login_password ? escapeHtml(member.login_password) : "Not saved"}</strong></div>
                   <div><span>Tasks</span><strong>${(member.housekeeping_tasks || []).length} assigned</strong></div>
                 </div>
                 <div class="table-actions">
@@ -150,6 +151,11 @@ await initProtectedPage("staff", async ({ root, auth }) => {
             <select id="status" name="status"><option value="">Select status</option>${STAFF_STATUSES.map((status) => `<option value="${status}">${status}</option>`).join("")}<\/select>
           </div>
         </div>
+        <div class="field">
+          <label for="login_password">Display Password</label>
+          <input id="login_password" name="login_password" type="text" minlength="6" value="${escapeHtml(member.login_password || "")}" placeholder="Password shown in staff directory">
+          <p class="field-help">Saved on the staff record for display. Supabase Auth passwords cannot be read back after account creation.</p>
+        </div>
         ${member.auth_user_id ? `
           <div class="panel">
             <p class="eyebrow">Login Access</p>
@@ -169,11 +175,7 @@ await initProtectedPage("staff", async ({ root, auth }) => {
                 <span>Allow this staff member to log in</span>
               </label>
             </div>
-            <div class="field">
-              <label for="login_password">Login Password</label>
-              <input id="login_password" name="login_password" type="password" minlength="6" placeholder="Minimum 6 characters">
-              <p class="field-help">Uses the staff email above. The created account will receive the Staff role.</p>
-            </div>
+            <p class="field-help">Uses the display password above. The created account will receive the Staff role.</p>
           </div>
         `}
         <button class="btn btn-primary" type="submit">${member.id ? "Save Changes" : "Add Staff Member"}</button>
@@ -188,7 +190,6 @@ await initProtectedPage("staff", async ({ root, auth }) => {
 
     if (loginToggle && loginPasswordField) {
       const syncLoginFieldState = () => {
-        loginPasswordField.disabled = !loginToggle.checked;
         loginPasswordField.required = loginToggle.checked;
       };
 
@@ -204,7 +205,6 @@ await initProtectedPage("staff", async ({ root, auth }) => {
           const createLoginAccess = payload.create_login_access === "on";
           const loginPassword = payload.login_password;
           delete payload.create_login_access;
-          delete payload.login_password;
           const loginRequested = createLoginAccess && !member.auth_user_id;
           if (member.auth_user_id) {
             payload.auth_user_id = member.auth_user_id;

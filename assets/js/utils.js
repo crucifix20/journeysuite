@@ -162,7 +162,17 @@ export function friendlyError(error, fallback = "Something went wrong. Please tr
   if (!error) {
     return fallback;
   }
-  return error.message || error.error_description || fallback;
+
+  const message = error.message || error.error_description || error.msg || error.details;
+  if (message && message !== "{}") {
+    return message;
+  }
+
+  if (typeof error === "string" && error !== "{}") {
+    return error;
+  }
+
+  return fallback;
 }
 
 export async function withFormBusy(form, pendingLabel, callback) {

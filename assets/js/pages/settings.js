@@ -1,6 +1,7 @@
 import { initProtectedPage } from "../router.js";
 import { createAuditLog } from "../services/auditService.js";
 import { deleteRoomType, listRoomTypes, saveRoomType } from "../services/roomsService.js";
+import { deleteAllStaffTransactions } from "../services/staffService.js";
 import { closeModal, confirmDialog, createPageHeader, openModal, showToast } from "../ui.js";
 import { friendlyError, formatCurrency, getStoredSettings, qs, render, saveStoredSettings, serializeForm, withFormBusy } from "../utils.js";
 
@@ -82,6 +83,15 @@ await initProtectedPage("settings", async ({ root, auth }) => {
       <section class="stitch-overview-card" style="margin-top:24px;">
         <div class="stitch-overview-head">
           <div>
+            <h2>Staff Transaction Cleanup</h2>
+            <p>Remove payment ledger rows, service orders, and audit records created by Staff users.</p>
+          </div>
+          <button class="btn btn-danger" id="delete-staff-transactions-button" type="button">Delete All Staff Transactions</button>
+        </div>
+      </section>
+      <section class="stitch-overview-card" style="margin-top:24px;">
+        <div class="stitch-overview-head">
+          <div>
             <h2>Room Type Register</h2>
             <p>${roomTypes.length} room types configured.</p>
           </div>
@@ -134,6 +144,30 @@ await initProtectedPage("settings", async ({ root, auth }) => {
           });
           showToast("Settings saved.", "success");
         });
+      } catch (error) {
+        showToast(friendlyError(error), "error");
+      }
+    });
+
+    qs("#delete-staff-transactions-button").addEventListener("click", async () => {
+      if (!await confirmDialog({
+        title: "Delete staff transactions",
+        message: "This removes all payment transactions, service orders, and audit records made by Staff users. Staff accounts and staff directory records stay active.",
+        confirmLabel: "Delete All",
+        tone: "danger",
+      })) {
+        return;
+      }
+
+      try {
+        const deleted = await deleteAllStaffTransactions();
+        await createAuditLog({
+          userId: auth.user.id,
+          action: "Deleted staff transactions",
+          entityType: "settings",
+          details: `Removed ${deleted.payments} payments, ${deleted.serviceOrders} service orders, and ${deleted.auditLogs} staff audit logs`,
+        });
+        showToast("Staff transactions deleted.", "success");
       } catch (error) {
         showToast(friendlyError(error), "error");
       }
